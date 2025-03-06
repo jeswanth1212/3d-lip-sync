@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facial Animation System</title>
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+    <div id="container">
+        <div id="animation-container"></div>
+        <div id="controls">
+            <button id="startButton">Start Animation</button>
+            <div class="emotion-controls">
+                <label>Happiness: <input type="range" id="happiness" min="0" max="1" step="0.1" value="0"></label>
+                <label>Surprise: <input type="range" id="surprise" min="0" max="1" step="0.1" value="0"></label>
+                <label>Thoughtful: <input type="range" id="thoughtful" min="0" max="1" step="0.1" value="0"></label>
+            </div>
+        </div>
+        <audio id="audioInput" preload="auto"></audio>
+    </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "/node_modules/three/build/three.module.js",
+            "three/examples/jsm/controls/OrbitControls": "/node_modules/three/examples/jsm/controls/OrbitControls.js",
+            "three/examples/jsm/loaders/GLTFLoader": "/node_modules/three/examples/jsm/loaders/GLTFLoader.js",
+            "tone": "/node_modules/tone/build/Tone.js"
+        }
+    }
+    </script>
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html> 
