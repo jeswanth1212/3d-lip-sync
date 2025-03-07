@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>VR Scene</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: Arial, sans-serif;
+            font-size: 1.2em;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        #instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: Arial, sans-serif;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading model...</div>
+    <div id="instructions">
+        Click the VR button to enter VR mode<br>
+        Use controllers to interact
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+                "three/examples/jsm/webxr/VRButton.js": "https://unpkg.com/three@0.161.0/examples/jsm/webxr/VRButton.js",
+                "three/examples/jsm/webxr/XRControllerModelFactory.js": "https://unpkg.com/three@0.161.0/examples/jsm/webxr/XRControllerModelFactory.js",
+                "three/examples/jsm/controls/OrbitControls.js": "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js",
+                "three/examples/jsm/loaders/GLTFLoader.js": "https://unpkg.com/three@0.161.0/examples/jsm/loaders/GLTFLoader.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import VRScene from './vr-scene.js';
+        import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+        // Show loading indicator
+        const loadingDiv = document.getElementById('loading');
+        loadingDiv.style.display = 'block';
+
+        // Create VR scene
+        const vrScene = new VRScene();
+
+        // Load the model
+        const loader = new GLTFLoader();
+        loader.load(
+            './model_animation.glb',
+            (gltf) => {
+                const model = gltf.scene;
+                
+                // Scale and position your model as needed
+                model.scale.set(1, 1, 1);
+                model.position.set(0, 0, -2);
+                
+                // Add the model to the VR scene
+                vrScene.addModel(model);
+                
+                // Hide loading indicator
+                loadingDiv.style.display = 'none';
+            },
+            (progress) => {
+                const percent = (progress.loaded / progress.total * 100).toFixed(1);
+                loadingDiv.textContent = `Loading model: ${percent}%`;
+            },
+            (error) => {
+                console.error('Error loading model:', error);
+                loadingDiv.textContent = 'Error loading model';
+            }
+        );
+
+        // Hide instructions after 5 seconds
+        setTimeout(() => {
+            const instructions = document.getElementById('instructions');
+            instructions.style.opacity = '0';
+            instructions.style.transition = 'opacity 1s';
+        }, 5000);
+    </script>
+</body>
+</html> 

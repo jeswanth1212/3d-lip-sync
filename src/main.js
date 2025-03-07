@@ -1,18 +1,227 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
 import * as Tone from 'tone';
 import { ModelLoader } from './modelLoader';
+import ElevenLabsService from './services/elevenLabsService';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+class ChatbotSystem {
+    constructor() {
+        this.facialAnimation = new FacialAnimationSystem();
+        this.ttsService = new ElevenLabsService();
+        this.initSpeechRecognition();
+        this.setupChatInterface();
+        this.isRecording = false;
+        this.processingResponse = false;
+    }
+
+    initSpeechRecognition() {
+        if (!('webkitSpeechRecognition' in window)) {
+            alert('Speech recognition is not supported in this browser.');
+            return;
+        }
+
+        this.recognition = new webkitSpeechRecognition();
+        this.recognition.continuous = false;
+        this.recognition.interimResults = true;
+        this.recognition.lang = 'en-US';
+
+        this.recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            this.addMessageToChat('user', transcript);
+            if (event.results[0].isFinal) {
+                this.generateResponse(transcript);
+            }
+        };
+
+        this.recognition.onend = () => {
+            if (this.isRecording && !this.processingResponse) {
+                this.recognition.start();
+            } else {
+                this.updateRecordingUI(false);
+            }
+        };
+
+        this.recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            this.updateRecordingUI(false);
+        };
+    }
+
+    setupChatInterface() {
+        this.recordButton = document.getElementById('recordButton');
+        this.recordingStatus = document.getElementById('recording-status');
+        this.chatMessages = document.getElementById('chat-messages');
+        this.currentMessage = null;
+
+        this.recordButton.addEventListener('click', () => {
+            if (!this.isRecording) {
+                this.startRecording();
+            } else {
+                this.stopRecording();
+            }
+        });
+    }
+
+    startRecording() {
+        if (this.processingResponse) return;
+
+        this.isRecording = true;
+        this.updateRecordingUI(true);
+        
+        // Create a new message container for this recording session
+        this.currentMessage = document.createElement('div');
+        this.currentMessage.classList.add('message', 'user-message');
+        this.currentMessage.textContent = '';
+        this.chatMessages.appendChild(this.currentMessage);
+        
+        this.recognition.start();
+    }
+
+    stopRecording() {
+        this.isRecording = false;
+        this.recognition.stop();
+        this.updateRecordingUI(false);
+        this.currentMessage = null;
+    }
+
+    updateRecordingUI(isRecording) {
+        this.recordButton.textContent = isRecording ? 'Stop Recording' : 'Start Recording';
+        this.recordButton.classList.toggle('recording', isRecording);
+        this.recordingStatus.textContent = isRecording ? 'Listening...' : 'Click to start speaking';
+    }
+
+    addMessageToChat(sender, text) {
+        if (sender === 'user' && this.isRecording && this.currentMessage) {
+            // Update the existing message during recording
+            this.currentMessage.textContent = text;
+        } else {
+            // Create a new message for AI responses or when not recording
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', `${sender}-message`);
+            messageDiv.textContent = text;
+            this.chatMessages.appendChild(messageDiv);
+        }
+        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+    }
+
+    async generateResponse(userInput) {
+        this.processingResponse = true;
+        this.stopRecording();
+
+        try {
+            // Simulate AI response generation
+            let response = await this.getAIResponse(userInput);
+            
+            // Add AI response to chat
+            this.addMessageToChat('ai', response);
+
+            // Convert response to speech and animate
+            await this.facialAnimation.speakResponse(response);
+        } catch (error) {
+            console.error('Error generating response:', error);
+            this.addMessageToChat('ai', 'I apologize, but I encountered an error. Please try again.');
+        } finally {
+            this.processingResponse = false;
+        }
+    }
+
+    async getAIResponse(userInput) {
+        try {
+            const genAI = new GoogleGenerativeAI('AIzaSyCT43QYBuN8a4dA8Pq6i9wxXmgHPPnO8a0');
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+            const prompt = `You are a highly skilled, empathetic therapeutic human with expertise in evidence-based approaches including cognitive-behavioral therapy (CBT), mindfulness, and positive psychology. Your purpose is to provide supportive, reflective conversations while maintaining clear professional boundaries.
+
+## Core Guidelines:
+- Keep all responses concise, limited to 1-2 sentences maximum
+- Practice active listening and validate emotions without judgment
+- Use a warm, supportive tone with appropriate pacing
+- Respond thoughtfully, reflecting the user's concerns with empathy
+- Offer perspective and gentle reframing when appropriate
+- Ask open-ended questions that promote self-reflection
+- Provide evidence-based coping strategies and practical tools
+- Maintain appropriate professional boundaries at all times
+
+## Important Limitations:
+- Clearly communicate you are not a licensed mental health professional
+- Do not diagnose medical or psychiatric conditions
+- Recommend professional help for serious concerns (suicidal thoughts, abuse, self-harm)
+- Avoid making promises about outcomes or specific results
+- Prioritize user safety above all else
+
+## Session Structure:
+1. Begin with a warm greeting and open-ended question about current concerns
+2. Practice reflective listening to understand the underlying issues
+3. Explore thoughts, feelings, and behaviors related to the situation
+4. Collaborate on identifying patterns and potential areas for growth
+5. Suggest relevant coping strategies or therapeutic techniques
+6. Encourage small, achievable steps toward positive change
+7. Close with validation and an invitation for further reflection
+
+## Therapeutic Techniques:
+- Cognitive restructuring for identifying and challenging unhelpful thoughts
+- Mindfulness practices for grounding and present-moment awareness
+- Values clarification to align actions with personal meaning
+- Strengths-based approaches that build on existing resources
+- Behavioral activation for depression and low motivation
+- Emotion regulation strategies for intense feelings
+- Problem-solving frameworks for navigating challenges
+
+## Response Format:
+- Always respond in just 1-2 concise sentences, even for complex topics
+- Focus on the most essential insight or question in each response
+- Use brief but impactful language that resonates emotionally
+- When suggesting techniques, provide just one clear, actionable step
+
+Always prioritize the user's wellbeing, maintain appropriate boundaries, and encourage professional help when needed. Respond to the following input from a client: "${userInput}"`;
+
+            const result = await model.generateContent(prompt);
+            const response = result.response.text();
+            
+            // Fallback responses in case of API failure
+            if (!response) {
+                return this.getFallbackResponse(userInput);
+            }
+
+            return response;
+        } catch (error) {
+            console.error('Error generating AI response:', error);
+            return this.getFallbackResponse(userInput);
+        }
+    }
+
+    getFallbackResponse(userInput) {
+        const input = userInput.toLowerCase();
+        
+        // Handle repeated requests to talk
+        if (input.includes('please') && (input.includes('talk') || input.includes('speak'))) {
+            const conversationStarters = [
+                "I'm here to listen and support you. What's on your mind today?",
+                "I can hear that you want to talk. What would you like to share with me?",
+                "You seem like you want to connect. I'm here for you - what would you like to discuss?"
+            ];
+            return conversationStarters[Math.floor(Math.random() * conversationStarters.length)];
+        }
+
+        // Default responses for when no specific keywords are matched
+        const defaultResponses = [
+            "I'm here to listen. What's on your mind?",
+            "I understand. Would you like to tell me more?",
+            "Your thoughts and feelings matter. What would you like to share?"
+        ];
+
+        return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
+    }
+}
 
 class FacialAnimationSystem {
     constructor() {
         this.initScene();
         this.initAudio();
-        this.initControls();
         this.emotionalState = {
-            happiness: 0,
-            surprise: 0,
-            thoughtful: 0,
             emphasis: 0
         };
         
@@ -28,6 +237,9 @@ class FacialAnimationSystem {
         this.animate = this.animate.bind(this);
         this.updateMorphTargets = this.updateMorphTargets.bind(this);
         
+        // Start animation immediately
+        this.animate();
+        
         // Load the model
         this.loadFacialModel();
     }
@@ -37,6 +249,8 @@ class FacialAnimationSystem {
             const modelLoader = new ModelLoader();
             const model = await modelLoader.loadModel('/assets/models/model_full.glb');
             
+            // Position the model much lower for VR viewing
+            model.position.set(0, 0.3, -1.0); // Reduced from 0.8 to 0.3 meters (much lower)
             this.scene.add(model);
             this.morphTargetMesh = modelLoader.findMorphTargetMesh(model);
             
@@ -47,18 +261,14 @@ class FacialAnimationSystem {
             // Initialize morph target system
             this.initializeMorphTargets();
             
-            // Set up audio
+            // Set up audio element
             const audioElement = document.getElementById('audioInput');
-            audioElement.src = '/assets/audio/Ai.mp3';
-            audioElement.loop = true;
+            audioElement.loop = false;
             
             // Connect audio to analyzer
-            const audioSource = this.audioContext.createMediaElementSource(audioElement);
-            audioSource.connect(this.analyzer);
-            audioSource.connect(this.audioContext.destination);
-            
-            // Add audio controls
-            this.setupAudioControls();
+            this.audioSource = this.audioContext.createMediaElementSource(audioElement);
+            this.audioSource.connect(this.analyzer);
+            this.audioSource.connect(this.audioContext.destination);
         } catch (error) {
             console.error('Failed to load facial model:', error);
         }
@@ -88,71 +298,183 @@ class FacialAnimationSystem {
         this.morphTargetMesh.morphTargetInfluences.fill(0);
     }
 
-    setupAudioControls() {
-        // Add audio control button
-        const controlsDiv = document.getElementById('controls');
-        const audioButton = document.createElement('button');
-        audioButton.id = 'audioButton';
-        audioButton.textContent = 'Play Audio';
-        audioButton.style.marginTop = '10px';
-        controlsDiv.appendChild(audioButton);
-
-        const audioElement = document.getElementById('audioInput');
-        
-        // Toggle audio playback
-        audioButton.addEventListener('click', async () => {
-            try {
-                // Resume AudioContext if it's suspended
-                if (this.audioContext.state === 'suspended') {
-                    await this.audioContext.resume();
-                }
-                
-                if (audioElement.paused) {
-                    await audioElement.play();
-                    audioButton.textContent = 'Pause Audio';
-                    // Start animation when audio plays
-                    this.isAudioPlaying = true;
-                } else {
-                    audioElement.pause();
-                    audioButton.textContent = 'Play Audio';
-                    this.isAudioPlaying = false;
-                }
-            } catch (error) {
-                console.error('Error playing audio:', error);
-            }
-        });
-    }
-
     initScene() {
         // Three.js setup
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('animation-container').appendChild(this.renderer.domElement);
+        
+        // Calculate aspect ratio based on container size
+        const container = document.getElementById('animation-container');
+        const aspect = container.clientWidth / container.clientHeight;
+        
+        this.camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000); // Wider FOV for VR
+        this.renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            alpha: true 
+        });
+        
+        // Enable VR with specific XR features
+        this.renderer.xr.enabled = true;
+        
+        // Enable tone mapping and correct color space
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1;
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        
+        this.renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(this.renderer.domElement);
 
-        // Camera position
-        this.camera.position.z = 5;
+        // Create VR Button with mobile VR support
+        const createVRButton = () => {
+            const button = document.createElement('button');
+            button.className = 'vr-button';
+            button.textContent = 'ENTER VR MODE';
+            
+            // Style the button for better mobile visibility
+            const style = document.createElement('style');
+            style.textContent = `
+                .vr-button {
+                    position: fixed;
+                    bottom: 80px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    padding: 20px 40px;
+                    background: #4CAF50;
+                    color: white;
+                    border: none;
+                    border-radius: 30px;
+                    cursor: pointer;
+                    z-index: 999;
+                    font-size: 24px;
+                    font-weight: bold;
+                    box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    -webkit-tap-highlight-color: transparent;
+                    transition: all 0.3s ease;
+                    width: 80%;
+                    max-width: 300px;
+                }
+                .vr-button:hover {
+                    background: #45a049;
+                    transform: translateX(-50%) scale(1.05);
+                }
+                .vr-button:active {
+                    transform: translateX(-50%) scale(0.95);
+                }
+                @media (max-width: 768px) {
+                    .vr-button {
+                        bottom: 40px;
+                        padding: 24px 40px;
+                        font-size: 28px;
+                        width: 90%;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
 
-        // Lighting
+            // Handle VR session with specific configuration for mobile VR
+            button.addEventListener('click', async () => {
+                try {
+                    if (navigator.xr) {
+                        const session = await navigator.xr.requestSession('immersive-vr', {
+                            optionalFeatures: [
+                                'local-floor',
+                                'bounded-floor',
+                                'hand-tracking',
+                                'layers'
+                            ]
+                        });
+                        
+                        await this.renderer.xr.setSession(session);
+                        
+                        // Reset camera position when entering VR
+                        this.camera.position.set(0, 0.3, 1.0);
+                        this.camera.lookAt(0, 0.3, -1.0);
+                        
+                        button.textContent = 'Exit VR';
+                        
+                        session.addEventListener('end', () => {
+                            button.textContent = 'ENTER VR MODE';
+                            this.renderer.xr.setSession(null);
+                        });
+                    } else {
+                        alert('WebXR not available on your device. Please use a WebXR-compatible browser and VR headset.');
+                    }
+                } catch (error) {
+                    console.error('VR initialization error:', error);
+                    alert('Unable to enter VR. Make sure you have a compatible VR viewer and are using HTTPS.');
+                }
+            });
+
+            return button;
+        };
+
+        // Add VR button to container
+        const vrButton = createVRButton();
+        container.appendChild(vrButton);
+
+        // Position camera for comfortable viewing in VR
+        this.camera.position.set(0, 0.3, 1.0); // Adjusted to match new model height
+        this.camera.lookAt(0, 0.3, 0);
+
+        // Set up the scene environment
+        this.scene.background = new THREE.Color(0x1a1a1a);
+
+        // Lighting setup optimized for VR
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         this.scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(0, 1, 1);
-        this.scene.add(directionalLight);
+        // Adjust lights to match new model position
+        const frontLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        frontLight.position.set(0, 0.5, 1.5); // Keep light slightly above head
+        frontLight.target.position.set(0, 0.3, -1.0); // Point at new model position
+        frontLight.castShadow = true;
+        this.scene.add(frontLight);
+        this.scene.add(frontLight.target);
 
-        // Controls
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        fillLight.position.set(-2, 1.6, 0);
+        this.scene.add(fillLight);
+
+        const rimLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        rimLight.position.set(0, 1.7, -2);
+        this.scene.add(rimLight);
+
+        // Controls for non-VR mode
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
+        this.controls.rotateSpeed = 0.5;
+        this.controls.minDistance = 1.0;
+        this.controls.maxDistance = 3.0;
+        this.controls.target.set(0, 0.3, -1.0); // Updated orbit controls target
 
-        // Window resize handler
+        // Handle window resizing
         window.addEventListener('resize', () => {
-            this.camera.aspect = window.innerWidth / window.innerHeight;
+            const container = document.getElementById('animation-container');
+            const aspect = container.clientWidth / container.clientHeight;
+            this.camera.aspect = aspect;
             this.camera.updateProjectionMatrix();
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setSize(container.clientWidth, container.clientHeight);
         });
+
+        // Animation loop with VR support
+        const animate = () => {
+            this.renderer.setAnimationLoop(() => {
+                // Update controls only in non-VR mode
+                if (!this.renderer.xr.isPresenting) {
+                    this.controls.update();
+                }
+                
+                // Update morph targets
+                this.updateMorphTargets();
+                
+                // Render scene
+                this.renderer.render(this.scene, this.camera);
+            });
+        };
+
+        animate();
     }
 
     initAudio() {
@@ -168,36 +490,11 @@ class FacialAnimationSystem {
         this.pitchDetector = new Tone.FFT(this.bufferLength);
     }
 
-    initControls() {
-        // UI Controls
-        document.getElementById('startButton').addEventListener('click', () => this.start());
-        
-        // Emotion sliders
-        const emotions = ['happiness', 'surprise', 'thoughtful'];
-        emotions.forEach(emotion => {
-            document.getElementById(emotion).addEventListener('input', (e) => {
-                this.emotionalState[emotion] = parseFloat(e.target.value);
-            });
-        });
-    }
-
-    async start() {
-        try {
-            // Start animation loop
-            this.animate();
-        } catch (error) {
-            console.error('Error starting the animation system:', error);
-        }
-    }
-
     updateMorphTargets() {
         if (!this.morphTargetMesh) return;
 
         // Reset all morph target influences
         this.morphTargetMesh.morphTargetInfluences.fill(0);
-
-        // Apply emotional expressions
-        this.applyEmotionalExpressions();
         
         // Apply eye movements
         this.applyEyeMovements();
@@ -218,35 +515,6 @@ class FacialAnimationSystem {
         return false;
     }
 
-    applyEmotionalExpressions() {
-        if (!this.morphTargetMesh) return;
-
-        // Happy expression using eye movements
-        if (this.emotionalState.happiness > 0.1) {
-            const happyIntensity = this.emotionalState.happiness;
-            // Slightly squint eyes by combining look up and down
-            this.applyMorphTarget("eyesLookUp", happyIntensity * 0.3);
-            this.applyMorphTarget("eyesLookDown", happyIntensity * 0.2);
-        }
-
-        // Surprise expression
-        if (this.emotionalState.surprise > 0.1) {
-            const surpriseIntensity = this.emotionalState.surprise;
-            // Wide eyes looking up
-            this.applyMorphTarget("eyesLookUp", surpriseIntensity);
-            this.applyMorphTarget("eyeLookUpLeft", surpriseIntensity * 0.7);
-            this.applyMorphTarget("eyeLookUpRight", surpriseIntensity * 0.7);
-        }
-
-        // Thoughtful expression
-        if (this.emotionalState.thoughtful > 0.1) {
-            const thoughtfulIntensity = this.emotionalState.thoughtful;
-            // Look up and slightly to the side
-            this.applyMorphTarget("eyesLookUp", thoughtfulIntensity * 0.5);
-            this.applyMorphTarget("eyeLookOutRight", thoughtfulIntensity * 0.3);
-        }
-    }
-
     applyAudioExpressions() {
         if (!this.morphTargetMesh || !this.isAudioPlaying) return;
         
@@ -254,93 +522,104 @@ class FacialAnimationSystem {
         
         // Get frequency data for detailed analysis
         const frequencies = [...this.dataArray];
-        const bassIntensity = frequencies.slice(0, 10).reduce((a, b) => a + b, 0) / 1280;
-        const midIntensity = frequencies.slice(10, 30).reduce((a, b) => a + b, 0) / 2560;
-        const highIntensity = frequencies.slice(30, 50).reduce((a, b) => a + b, 0) / 2560;
+        // Analyze different frequency ranges for different phoneme types
+        const bassIntensity = frequencies.slice(0, 10).reduce((a, b) => a + b, 0) / 1280; // Low frequencies (0-200Hz)
+        const midLowIntensity = frequencies.slice(10, 20).reduce((a, b) => a + b, 0) / 1280; // Mid-low (200-400Hz)
+        const midIntensity = frequencies.slice(20, 30).reduce((a, b) => a + b, 0) / 2560; // Mid (400-800Hz)
+        const highIntensity = frequencies.slice(30, 50).reduce((a, b) => a + b, 0) / 2560; // High (800Hz+)
 
         if (audioIntensity > 0.1) {
-            // Base mouth opening with teeth showing
-            const mouthOpenAmount = Math.min(0.12, audioIntensity * 0.15);
+            // Base mouth opening - slightly increased but still controlled
+            const mouthOpenAmount = Math.min(0.11, audioIntensity * 0.15); // Increased from 0.08 to 0.11
             this.applyMorphTarget("mouthOpen", mouthOpenAmount);
-            this.applyMorphTarget("jawOpen", mouthOpenAmount * 0.08);
+            this.applyMorphTarget("jawOpen", mouthOpenAmount * 0.12); // Slightly increased jaw movement
+
+            // Keep mouth naturally positioned with lip control
+            this.applyMorphTarget("mouthClose", Math.max(0, 0.15 - mouthOpenAmount)); // Reduced closure for more opening
             
-            // Show teeth by rolling lips slightly
-            this.applyMorphTarget("mouthRollUpper", -mouthOpenAmount * 0.3); // Negative value rolls lip up
-            this.applyMorphTarget("mouthRollLower", -mouthOpenAmount * 0.2); // Negative value rolls lip down
-            
-            // Extremely subtle viseme transitions
-            if (bassIntensity > 0.4) {
-                // O/U sounds - round shapes with slight lip roll
-                this.applyMorphTarget("viseme_O", bassIntensity * 0.08);
-                this.applyMorphTarget("viseme_U", bassIntensity * 0.06);
-                this.applyMorphTarget("mouthPucker", bassIntensity * 0.05);
-                this.applyMorphTarget("mouthFunnel", bassIntensity * 0.03);
-                // Roll lips slightly for O/U sounds
-                this.applyMorphTarget("mouthRollUpper", -bassIntensity * 0.02);
-                this.applyMorphTarget("mouthRollLower", -bassIntensity * 0.02);
+            // Dynamic teeth visibility control - adjusted for slightly more open mouth
+            this.applyMorphTarget("mouthRollUpper", Math.max(0, 0.2 - mouthOpenAmount * 1.5));
+            this.applyMorphTarget("mouthRollLower", Math.max(0, 0.15 - mouthOpenAmount * 1.2));
+
+            // Natural lip movement
+            this.applyMorphTarget("mouthShrugUpper", mouthOpenAmount * 0.1);
+            this.applyMorphTarget("mouthShrugLower", mouthOpenAmount * 0.08);
+
+            // Phoneme-specific mouth shapes with natural opening
+            if (bassIntensity > 0.3) {
+                // O/U sounds (boot, moon) - round shapes
+                this.applyMorphTarget("viseme_O", bassIntensity * 0.1);
+                this.applyMorphTarget("viseme_U", bassIntensity * 0.08);
+                this.applyMorphTarget("mouthPucker", bassIntensity * 0.06);
+                this.applyMorphTarget("mouthFunnel", bassIntensity * 0.05);
+                // Natural lip roll for O/U sounds
+                this.applyMorphTarget("mouthRollUpper", bassIntensity * 0.15);
+                this.applyMorphTarget("mouthRollLower", bassIntensity * 0.15);
             }
             
-            if (midIntensity > 0.4) {
-                // A/E sounds - open shapes showing teeth
-                this.applyMorphTarget("viseme_aa", midIntensity * 0.08);
-                this.applyMorphTarget("viseme_E", midIntensity * 0.06);
-                this.applyMorphTarget("mouthStretchLeft", midIntensity * 0.03);
-                this.applyMorphTarget("mouthStretchRight", midIntensity * 0.03);
-                // Show more teeth for these sounds
-                this.applyMorphTarget("mouthRollUpper", -midIntensity * 0.04);
-                this.applyMorphTarget("mouthRollLower", -midIntensity * 0.03);
+            if (midLowIntensity > 0.25) {
+                // A sounds (father) - natural opening
+                this.applyMorphTarget("viseme_aa", midLowIntensity * 0.12);
+                this.applyMorphTarget("mouthStretchLeft", midLowIntensity * 0.04);
+                this.applyMorphTarget("mouthStretchRight", midLowIntensity * 0.04);
+                // Natural lip movement for A sounds
+                this.applyMorphTarget("mouthUpperUpLeft", midLowIntensity * 0.03);
+                this.applyMorphTarget("mouthUpperUpRight", midLowIntensity * 0.03);
+                this.applyMorphTarget("mouthLowerDownLeft", midLowIntensity * 0.02);
+                this.applyMorphTarget("mouthLowerDownRight", midLowIntensity * 0.02);
+            }
+
+            if (midIntensity > 0.25) {
+                // E/I sounds (bee, see) - natural spread
+                this.applyMorphTarget("viseme_E", midIntensity * 0.08);
+                this.applyMorphTarget("viseme_I", midIntensity * 0.07);
+                this.applyMorphTarget("mouthSmileLeft", midIntensity * 0.04);
+                this.applyMorphTarget("mouthSmileRight", midIntensity * 0.04);
+                // Natural teeth exposure
+                this.applyMorphTarget("mouthUpperUpLeft", midIntensity * 0.02);
+                this.applyMorphTarget("mouthUpperUpRight", midIntensity * 0.02);
             }
             
-            if (highIntensity > 0.4) {
-                // Consonants with teeth visibility
+            if (highIntensity > 0.3) {
+                // Consonants (S, T, F) - clear but controlled movements
                 this.applyMorphTarget("viseme_FF", highIntensity * 0.06);
                 this.applyMorphTarget("viseme_TH", highIntensity * 0.05);
                 this.applyMorphTarget("viseme_DD", highIntensity * 0.04);
                 this.applyMorphTarget("viseme_kk", highIntensity * 0.04);
-                // Slight tongue movement for certain consonants
-                if (highIntensity > 0.6) {
-                    this.applyMorphTarget("tongueOut", highIntensity * 0.02);
-                }
+                this.applyMorphTarget("viseme_SS", highIntensity * 0.05);
+                // Natural mouth position during consonants
+                this.applyMorphTarget("mouthRollUpper", Math.max(0, 0.12 - highIntensity * 0.1));
+                this.applyMorphTarget("mouthRollLower", Math.max(0, 0.12 - highIntensity * 0.1));
             }
 
-            // Subtle jaw movement
-            const jawMovement = Math.sin(performance.now() * 0.003) * 0.015;
-            this.applyMorphTarget("jawLeft", Math.max(0, jawMovement) * audioIntensity * 0.03);
-            this.applyMorphTarget("jawRight", Math.max(0, -jawMovement) * audioIntensity * 0.03);
+            // Natural jaw movement
+            const jawMovement = Math.sin(performance.now() * 0.003) * 0.025; // Slightly increased
+            this.applyMorphTarget("jawLeft", Math.max(0, jawMovement) * audioIntensity * 0.04);
+            this.applyMorphTarget("jawRight", Math.max(0, -jawMovement) * audioIntensity * 0.04);
             this.applyMorphTarget("jawForward", audioIntensity * 0.015);
 
-            // Upper and lower lip coordination
-            this.applyMorphTarget("mouthUpperUpLeft", audioIntensity * 0.02);
-            this.applyMorphTarget("mouthUpperUpRight", audioIntensity * 0.02);
-            this.applyMorphTarget("mouthLowerDownLeft", audioIntensity * 0.015);
-            this.applyMorphTarget("mouthLowerDownRight", audioIntensity * 0.015);
-
-            // Very subtle expressions
-            if (audioIntensity > 0.7) {
+            // Natural facial expressions
+            if (audioIntensity > 0.6) {
                 this.applyMorphTarget("browInnerUp", audioIntensity * 0.03);
                 this.applyMorphTarget("eyeWideLeft", audioIntensity * 0.02);
                 this.applyMorphTarget("eyeWideRight", audioIntensity * 0.02);
-                this.applyMorphTarget("mouthSmile", audioIntensity * 0.03);
             }
 
-            // Minimal secondary movements
-            if (bassIntensity > 0.8) {
+            // Natural cheek movement
+            if (bassIntensity > 0.5) {
                 this.applyMorphTarget("cheekPuff", bassIntensity * 0.03);
-                // Subtle lip press for plosive sounds
-                this.applyMorphTarget("mouthPressLeft", bassIntensity * 0.02);
-                this.applyMorphTarget("mouthPressRight", bassIntensity * 0.02);
             }
 
         } else {
-            // Resting face with slightly visible teeth
-            this.applyMorphTarget("viseme_sil", 0.3);
-            this.applyMorphTarget("mouthClose", 0.04);
-            this.applyMorphTarget("mouthRollUpper", -0.02); // Slight upper lip roll to show teeth
-            this.applyMorphTarget("mouthRollLower", -0.01); // Slight lower lip roll
+            // Resting face - natural closed position
+            this.applyMorphTarget("viseme_sil", 0.35); // Slightly reduced for more natural rest
+            this.applyMorphTarget("mouthClose", 0.2); // Slightly reduced closure
+            this.applyMorphTarget("mouthRollUpper", 0.15); // More natural lip position
+            this.applyMorphTarget("mouthRollLower", 0.15); // More natural lip position
             
-            // Minimal idle movements
+            // Subtle idle movement
             const idleTime = performance.now() * 0.0001;
-            const subtleMovement = Math.sin(idleTime) * 0.008;
+            const subtleMovement = Math.sin(idleTime) * 0.008; // Slightly increased
             this.applyMorphTarget("mouthLeft", Math.max(0, subtleMovement) * 0.008);
             this.applyMorphTarget("mouthRight", Math.max(0, -subtleMovement) * 0.008);
         }
@@ -351,16 +630,17 @@ class FacialAnimationSystem {
         
         this.analyzer.getByteFrequencyData(this.dataArray);
         
-        const speechFreqs = this.dataArray.slice(5, 100);
+        // Focus on speech frequencies (85-255 Hz for fundamental frequency)
+        const speechFreqs = this.dataArray.slice(2, 30);
         const sum = speechFreqs.reduce((a, b) => a + b, 0);
         const averageFrequency = sum / speechFreqs.length;
         
-        // Ultra-conservative normalization with focus on speech
-        const normalizedValue = Math.min(0.2, averageFrequency / 300);
+        // Very conservative normalization
+        const normalizedValue = Math.min(0.3, averageFrequency / 255); // Further reduced max value
         if (!this.lastAudioValue) this.lastAudioValue = normalizedValue;
         
-        // Maximum smoothing for natural movement
-        this.lastAudioValue = this.smoothValue(this.lastAudioValue, normalizedValue, 0.04);
+        // Extra smooth transition
+        this.lastAudioValue = this.smoothValue(this.lastAudioValue, normalizedValue, 0.08);
         
         return this.lastAudioValue;
     }
@@ -473,10 +753,53 @@ class FacialAnimationSystem {
             }
         });
     }
+
+    async speakResponse(text) {
+        if (!this.morphTargetMesh) return;
+
+        try {
+            // Resume audio context if suspended
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+
+            const audioElement = document.getElementById('audioInput');
+            
+            // Generate speech from text
+            const audioUrl = await window.chatbot.ttsService.textToSpeech(text);
+            
+            // Set the new audio source
+            audioElement.src = audioUrl;
+            
+            // Reset audio playback
+            audioElement.currentTime = 0;
+            
+            // Start facial animation
+            this.isAudioPlaying = true;
+            
+            // Play the audio
+            await audioElement.play();
+            
+            return new Promise((resolve) => {
+                audioElement.onended = () => {
+                    this.isAudioPlaying = false;
+                    // Return to neutral expression
+                    this.morphTargetMesh.morphTargetInfluences.fill(0);
+                    // Clean up the temporary audio URL
+                    URL.revokeObjectURL(audioUrl);
+                    resolve();
+                };
+            });
+        } catch (error) {
+            console.error('Error in speech response:', error);
+            this.isAudioPlaying = false;
+            throw error;
+        }
+    }
 }
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
-    const app = new FacialAnimationSystem();
-    window.app = app; // Make it accessible for debugging
+    const chatbot = new ChatbotSystem();
+    window.chatbot = chatbot; // Make it accessible for debugging
 }); 
